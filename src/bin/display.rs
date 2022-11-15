@@ -27,12 +27,15 @@ fn main() -> Result<()> {
 
     // Connect to IT8951 controlled display
     let mut api = API::connect()?;
+
+    // Send SCSI inquiry command
     api.inquiry()?;
 
-    let system_info = api.get_system_info();
-    println!("{:#?}", system_info);
+    // Set VCOM value
+    api.set_vcom(1580)?; // -1.58
 
     // Make sure the file and display dimension actually match
+    let system_info = api.get_system_info();
     assert_eq!(frames.width(), system_info.width);
     assert_eq!(frames.height(), system_info.height);
     println!(
@@ -41,22 +44,21 @@ fn main() -> Result<()> {
         frames.height()
     );
 
-    let base_address = system_info.image_buffer_base;
+    /* let base_address = system_info.image_buffer_base;
     let image_size = (system_info.width / 8 + 1) * system_info.height;
-    println!("{:?}", image_size);
+    println!("{:?}", image_size); */
 
     // api.reset()?;
     // api.display_image(Mode::INIT, base_address)?;
-    // thread::sleep(std::time::Duration::from_millis(1000));
 
-    api.preload_image(frames.frame(0), base_address)?;
+    /* api.preload_image(frames.frame(0), base_address)?;
     api.display_image(Mode::A2, base_address)?;
     api.preload_image(frames.frame(1), base_address)?;
     api.display_image(Mode::A2, base_address)?;
     api.preload_image(frames.frame(2), base_address)?;
     api.display_image(Mode::A2, base_address)?;
     api.preload_image(frames.frame(4), base_address)?;
-    api.display_image(Mode::A2, base_address)?;
+    api.display_image(Mode::A2, base_address)?; */
 
     Ok(())
 }

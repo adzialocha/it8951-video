@@ -1,6 +1,6 @@
-use std::fs;
 use std::path::PathBuf;
 use std::thread;
+use std::{fs, time::Duration};
 
 use anyhow::Result;
 use structopt::StructOpt;
@@ -28,47 +28,48 @@ fn main() -> Result<()> {
     // Connect to IT8951 controlled display
     let mut api = API::connect()?;
 
+    // Get system information
+    let system_info = api.get_system_info();
+    let base_address = system_info.image_buffer_base;
+    let width = system_info.width;
+    let height = system_info.height;
+    let image_size = width * height / 8;
+
     // Send SCSI inquiry command
     api.inquiry()?;
 
     // Set VCOM value
-    api.set_vcom(1580)?; // -1.58
+    api.set_vcom(1_580)?; // -1.58
+
+    // Clear screen first
+    /* api.display_image(base_address, Mode::INIT)?;
+    thread::sleep(Duration::from_millis(3500)); */
 
     // Enable 1bit drawing and image pitch mode
-    let reg = api.get_memory_register_value(0x18001138)?;
-    api.set_memory_register_value(0x18001138, reg | (1 << 18) | (1 << 17))?;
+    let reg = api.get_memory_register_value(0x1800_1138)?;
+    api.set_memory_register_value(0x1800_1138, reg | (1 << 18) | (1 << 17))?;
 
     // Set image pitch width
-    api.set_memory_register_value(0x1800124c, frames.width() / 8 / 4)?;
+    api.set_memory_register_value(0x1800_124c, frames.width() / 8 / 4)?;
 
-    // Set bitmap mode color definition
-    api.set_memory_register_value(0x18001250, 0xf0 | (0x00 << 8))?; // 0 - set black(0x00), 1 - set white(0xf0)
+    // Set bitmap mode color definition (0 - set black(0x00), 1 - set white(0xf0))
+    api.set_memory_register_value(0x1800_1250, 0xf0 | (0x00 << 8))?;
 
     // Make sure the file and display dimension actually match
-    let system_info = api.get_system_info();
-    assert_eq!(frames.width(), system_info.width);
-    assert_eq!(frames.height(), system_info.height);
-    println!(
-        "width = {}px, height = {}px",
-        frames.width(),
-        frames.height()
-    );
+    assert_eq!(frames.width(), width);
+    assert_eq!(frames.height(), height);
 
-    /* let base_address = system_info.image_buffer_base;
-    let image_size = (system_info.width / 8 + 1) * system_info.height;
-    println!("{:?}", image_size); */
+    // Write images to buffer
+    api.fast_write_to_memory(base_address + (image_size * 0), &frames.get(4))?;
+    // api.fast_write_to_memory(base_address + (image_size * 1), &frames.get(1))?;
+    // api.fast_write_to_memory(base_address + (image_size * 2), &frames.get(2))?;
+    // api.fast_write_to_memory(base_address + (image_size * 3), &frames.get(3))?;
 
-    // api.reset()?;
-    // api.display_image(Mode::INIT, base_address)?;
-
-    /* api.preload_image(frames.frame(0), base_address)?;
-    api.display_image(Mode::A2, base_address)?;
-    api.preload_image(frames.frame(1), base_address)?;
-    api.display_image(Mode::A2, base_address)?;
-    api.preload_image(frames.frame(2), base_address)?;
-    api.display_image(Mode::A2, base_address)?;
-    api.preload_image(frames.frame(4), base_address)?;
-    api.display_image(Mode::A2, base_address)?; */
+    // ... and display them
+    api.display_image(base_address + (image_size * 0), Mode::A2)?;
+    // api.display_image(base_address + (image_size * 1), Mode::A2)?;
+    // api.display_image(base_address + (image_size * 2), Mode::A2)?;
+    // api.display_image(base_address + (image_size * 3), Mode::A2)?;
 
     Ok(())
 }

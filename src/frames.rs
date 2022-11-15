@@ -10,7 +10,7 @@ impl RawFrames {
         Self(width, height, data)
     }
 
-    pub fn frame(&self, index: usize) -> Vec<u8> {
+    pub fn get(&self, index: usize) -> Vec<u8> {
         self.2.get(index).unwrap().to_owned()
     }
 

@@ -1,5 +1,4 @@
 use std::fmt;
-use std::mem;
 use std::str;
 use std::time::Duration;
 
@@ -14,17 +13,20 @@ const ENDPOINT_IN: u8 = 0x81;
 const ENDPOINT_OUT: u8 = 0x02;
 const SCSI_TIMEOUT_MS: u64 = 1000;
 
-/// Maximum transfer size is 60k bytes for IT8951 USB.
-const MAX_TRANSFER: usize = 60 * 1024;
-
+/// Customer command.
 const CUSTOMER_CMD: u8 = 0xfe;
 
+/// Read from register command.
 const READ_REG_CMD: u8 = 0x83;
+
+/// Write to register command.
 const WRITE_REG_CMD: u8 = 0x84;
 
-/// PMIC (Power Management Integrated Circuits) control for switching power on/off sequence or
-/// changing VCOM value.
+/// PMIC (Power Management Integrated Circuits) command.
 const PMIC_CONTROL_CMD: u8 = 0xa3;
+
+// Write to memory in fast mode.
+const FAST_WRITE_CMD: u8 = 0xa5;
 
 /// SCSI inquiry command.
 const INQUIRY_CMD: [u8; 16] = [
@@ -44,26 +46,6 @@ const GET_SYS_CMD: [u8; 16] = [
     0x01, // Version[1]
     0x00, // Version[2]
     0x02,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-];
-
-/// Command to load image area into memory.
-const LD_IMAGE_AREA_CMD: [u8; 16] = [
-    CUSTOMER_CMD,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0xa2,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
     0x00,
     0x00,
     0x00,
@@ -116,19 +98,22 @@ const SOFTWARE_RESET_CMD: [u8; 16] = [
 #[derive(Serialize, PartialEq, Debug)]
 pub enum Mode {
     /// The initialization (INIT) mode is used to completely erase the display and leave it in the
-    /// white state
+    /// white state.
     INIT,
 
-    /// The direct update (DU) is a very fast, non-flashy update. This mode supports transitions
-    /// from any graytone to black or white only. It cannot be used to update to any graytone other
-    /// than black or white. The fast update time for this mode makes it useful for response to
-    /// touch sensor or pen input or menu selection indictors.
+    /// The direct update (DU) is a very fast, non-flashy update.
+    ///
+    /// This mode supports transitions from any graytone to black or white only. It cannot be used
+    /// to update to any graytone other than black or white. The fast update time for this mode
+    /// makes it useful for response to touch sensor or pen input or menu selection indictors.
     DU,
 
     /// The grayscale clearing (GC16) mode is used to update the full display and provide a high
-    /// image quality. When GC16 is used with Full Display Update the entire display will update as
-    /// the new image is written. If a Partial Update command is used the only pixels with changing
-    /// graytone values will update. The GC16 mode has 16 unique gray levels.
+    /// image quality.
+    ///
+    /// When GC16 is used with Full Display Update the entire display will update as the new image
+    /// is written. If a Partial Update command is used the only pixels with changing graytone
+    /// values will update. The GC16 mode has 16 unique gray levels.
     GC16,
 
     /// The GL16 waveform is primarily used to update sparse content on a white background, such as
@@ -142,8 +127,9 @@ pub enum Mode {
     GLR16,
 
     /// The GLD16 mode is used in conjunction with an image preprocessing algorithm to update
-    /// sparse content on a white background with reduced flash and reduced image artifacts. It is
-    /// recommended to be used only with the full display update.
+    /// sparse content on a white background with reduced flash and reduced image artifacts.
+    ///
+    /// It is recommended to be used only with the full display update.
     GLD16,
 
     /// The A2 mode is a fast, non-flash update mode designed for fast paging turning or simple
@@ -223,21 +209,14 @@ struct CInquiry {
     ignore_end: [u8; 4],
 }
 
-/// Inquiry.
-///
-/// If it works, it's going to be uninteresting:
-/// ```
-/// vendor: Generic
-/// product: Storage RamDisc
-/// revision: 1.00
-// ```
+/// SCSI inquiry command.
 pub struct Inquiry {
     pub vendor: String,
     pub product: String,
     pub revision: String,
 }
 
-/// An area
+/// An area.
 #[repr(C)]
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 struct Area {
@@ -322,6 +301,7 @@ impl API {
         })
     }
 
+    /// Read value from memory register of controller.
     pub fn get_memory_register_value(&mut self, address: u32) -> rusb::Result<u32> {
         let address_8 = address.to_be_bytes();
 
@@ -408,47 +388,34 @@ impl API {
             .read_command(&SOFTWARE_RESET_CMD, bincode::options().with_big_endian())
     }
 
-    pub fn preload_image(&mut self, frame: Vec<u8>, address: u32) -> rusb::Result<()> {
-        let system_info = self.get_system_info();
+    /// Write any data to memory using fast-write mode.
+    pub fn fast_write_to_memory(&mut self, address: u32, data: &[u8]) -> rusb::Result<()> {
+        let address_8 = address.to_be_bytes();
+        let data_len_8 = (data.len() as u16).to_be_bytes();
 
-        // Load image into buffer
-        let data = frame.as_slice();
-        let w: usize = system_info.width as usize;
-        let h: usize = system_info.height as usize;
-        let size = w * h;
+        let command = [
+            CUSTOMER_CMD,
+            0x00,
+            address_8[0],
+            address_8[1],
+            address_8[2],
+            address_8[3],
+            FAST_WRITE_CMD,
+            data_len_8[0],
+            data_len_8[1],
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+        ];
 
-        // We send the image in bands of MAX_TRANSFER
-        let mut i: usize = 0;
-        let mut row_height = (MAX_TRANSFER - mem::size_of::<Area>()) / w;
-
-        while i < size {
-            // We don't want to go beyond the end with the last band
-            if (i / w) + row_height > h {
-                row_height = h - (i / w);
-            }
-
-            // The sent image will be collected by IT8951 whatever Host sends partial or full
-            // image.
-            self.connection.write_command(
-                &LD_IMAGE_AREA_CMD,
-                Area {
-                    address,
-                    x: 0,
-                    y: (i / w) as u32,
-                    w: w as u32,
-                    h: row_height as u32,
-                },
-                &data[i..i + w * row_height],
-                bincode::options().with_big_endian(),
-            )?;
-
-            i += row_height * w;
-        }
-
-        Ok(())
+        self.connection.write_command_raw(&command, &data)
     }
 
-    pub fn display_image(&mut self, mode: Mode, address: u32) -> rusb::Result<()> {
+    pub fn display_image(&mut self, address: u32, mode: Mode) -> rusb::Result<()> {
         let system_info = self.get_system_info();
 
         self.connection.write_command(

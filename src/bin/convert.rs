@@ -47,6 +47,7 @@ fn extract_video_frames(
         .enumerate()
         .map(|(index, (_, raw_frame))| {
             println!("Convert frame {index}");
+
             let size = raw_frame.shape();
             let width = size[0] as u32;
             let height = size[1] as u32;
@@ -82,7 +83,7 @@ fn extract_video_frames(
 
                 chunk.enumerate().for_each(|(index, (_, _, luma))| {
                     if luma.0[0] == 255 {
-                        byte |= base.pow(7 - index as u32)
+                        byte |= base.pow(7 - index as u32);
                     }
                 });
 

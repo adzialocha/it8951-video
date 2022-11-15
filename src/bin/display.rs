@@ -34,6 +34,16 @@ fn main() -> Result<()> {
     // Set VCOM value
     api.set_vcom(1580)?; // -1.58
 
+    // Enable 1bit drawing and image pitch mode
+    let reg = api.get_memory_register_value(0x18001138)?;
+    api.set_memory_register_value(0x18001138, reg | (1 << 18) | (1 << 17))?;
+
+    // Set image pitch width
+    api.set_memory_register_value(0x1800124c, frames.width() / 8 / 4)?;
+
+    // Set bitmap mode color definition
+    api.set_memory_register_value(0x18001250, 0xf0 | (0x00 << 8))?; // 0 - set black(0x00), 1 - set white(0xf0)
+
     // Make sure the file and display dimension actually match
     let system_info = api.get_system_info();
     assert_eq!(frames.width(), system_info.width);

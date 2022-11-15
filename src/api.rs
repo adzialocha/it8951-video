@@ -19,6 +19,9 @@ const MAX_TRANSFER: usize = 60 * 1024;
 
 const CUSTOMER_CMD: u8 = 0xfe;
 
+const READ_REG_CMD: u8 = 0x83;
+const WRITE_REG_CMD: u8 = 0x84;
+
 /// PMIC (Power Management Integrated Circuits) control for switching power on/off sequence or
 /// changing VCOM value.
 const PMIC_CONTROL_CMD: u8 = 0xa3;
@@ -306,7 +309,7 @@ impl API {
         &self.system_info
     }
 
-    /// Make an inquiry.
+    /// Send SCSCI inquiry command to receive device information.
     pub fn inquiry(&mut self) -> rusb::Result<Inquiry> {
         let c_inquiry: CInquiry = self
             .connection
@@ -319,6 +322,61 @@ impl API {
         })
     }
 
+    pub fn get_memory_register_value(&mut self, address: u32) -> rusb::Result<u32> {
+        let address_8 = address.to_be_bytes();
+
+        let command = [
+            CUSTOMER_CMD,
+            0x00,
+            address_8[0],
+            address_8[1],
+            address_8[2],
+            address_8[3],
+            READ_REG_CMD,
+            0x00, // Length[0]
+            0x04, // Length[1]: 4
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+        ];
+
+        let result: u32 = self.connection.read_command(&command, bincode::options())?;
+
+        Ok(result)
+    }
+
+    /// Set memory register value of controller.
+    pub fn set_memory_register_value(&mut self, address: u32, data: u32) -> rusb::Result<()> {
+        let address_8 = address.to_be_bytes();
+
+        let command = [
+            CUSTOMER_CMD,
+            0x00,
+            address_8[0],
+            address_8[1],
+            address_8[2],
+            address_8[3],
+            WRITE_REG_CMD,
+            0x00, // Length[0]
+            0x04, // Length[1]: 4 bytes
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+        ];
+
+        self.connection
+            .write_command_raw(&command, &data.to_be_bytes())
+    }
+
+    /// Set VCOM value of controller.
     pub fn set_vcom(&mut self, vcom: u16) -> rusb::Result<()> {
         let [vcom_h, vcom_l] = vcom.to_be_bytes();
 
@@ -341,14 +399,10 @@ impl API {
             0x00,
         ];
 
-        self.connection.write_command(
-            &data,
-            Vec::<u8>::new(),
-            &[],
-            bincode::options().with_big_endian(),
-        )
+        self.connection.write_command_raw(&data, &[])
     }
 
+    /// Reset device state to default.
     pub fn reset(&mut self) -> rusb::Result<SystemInfo> {
         self.connection
             .read_command(&SOFTWARE_RESET_CMD, bincode::options().with_big_endian())

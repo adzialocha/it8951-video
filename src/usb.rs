@@ -6,8 +6,6 @@ use bincode::config::Options;
 use rusb::{DeviceHandle, Error, GlobalContext, Result};
 use serde::{Deserialize, Serialize};
 
-// this implements sending SCSI commands over USB
-
 #[derive(Clone, Copy, Eq, PartialEq, Debug)]
 pub enum Direction {
     IN,
@@ -37,6 +35,7 @@ pub struct CommandStatusWrapper {
 
 static TAG: AtomicU32 = AtomicU32::new(1);
 
+// Send SCSI commands over USB.
 pub struct ScsiOverUsbConnection {
     pub device_handle: DeviceHandle<GlobalContext>,
     pub endpoint_out: u8,
@@ -51,24 +50,26 @@ impl ScsiOverUsbConnection {
         bincode_options: O,
     ) -> Result<T> {
         let length = mem::size_of::<T>();
-        // issue CBW block
+
+        // Issue CBW block
         let cbw_data = &get_command_block_wrapper(command, length as u32, Direction::IN);
         self.device_handle
             .write_bulk(self.endpoint_out, cbw_data, self.timeout)?;
 
-        // now read the data
+        // Now read the data
         let mut buf: Vec<u8> = vec![0; length];
         self.device_handle
             .read_bulk(self.endpoint_in, &mut buf, self.timeout)?;
 
-        // issue CBS block
+        // Issue CBS block
         self.send_status_block_wrapper()?;
 
-        // transform data into required data
+        // Transform data into required result type
         let result: T = bincode_options
             .with_fixint_encoding()
             .deserialize(&buf)
             .unwrap();
+
         Ok(result)
     }
 
@@ -79,26 +80,43 @@ impl ScsiOverUsbConnection {
         data: &[u8],
         bincode_options: O,
     ) -> Result<()> {
-        // transform the value into data
+        // Transform the value into data
         let mut value_data: Vec<u8> = bincode_options
             .with_fixint_encoding()
             .serialize(&value)
             .unwrap();
-        // combine this with any additional data
+
+        // Combine this with any additional data
         let mut bulk_data: Vec<u8> = Vec::new();
         bulk_data.append(&mut value_data);
         bulk_data.extend_from_slice(data);
 
-        // issue CBW block
+        // Issue CBW block
         let cbw_data = &get_command_block_wrapper(command, bulk_data.len() as u32, Direction::OUT);
         self.device_handle
             .write_bulk(self.endpoint_out, cbw_data, self.timeout)?;
 
-        // now write the data for the value
+        // Now write the data for the value
         self.device_handle
             .write_bulk(self.endpoint_out, &bulk_data, self.timeout)?;
 
-        // issue CBS block
+        // Issue CBS block
+        self.send_status_block_wrapper()?;
+
+        Ok(())
+    }
+
+    pub fn write_command_raw(&mut self, command: &[u8; 16], data: &[u8]) -> Result<()> {
+        // Issue CBW block
+        let cbw_data = &get_command_block_wrapper(command, data.len() as u32, Direction::OUT);
+        self.device_handle
+            .write_bulk(self.endpoint_out, cbw_data, self.timeout)?;
+
+        // Now write the data for the value
+        self.device_handle
+            .write_bulk(self.endpoint_out, &data, self.timeout)?;
+
+        // Issue CBS block
         self.send_status_block_wrapper()?;
 
         Ok(())
@@ -140,7 +158,9 @@ pub fn get_command_block_wrapper(
         Direction::IN => 0x80,
         Direction::OUT => 0x00,
     };
+
     let tag = TAG.fetch_add(1, Ordering::SeqCst);
+
     let cwb = CommandBlockWrapper {
         signature: [0x55, 0x53, 0x42, 0x43],
         tag,
@@ -150,6 +170,7 @@ pub fn get_command_block_wrapper(
         command_length: 16,
         command_data: *command_data,
     };
+
     bincode::options()
         .with_little_endian()
         .with_fixint_encoding()

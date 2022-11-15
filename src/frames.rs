@@ -1,13 +1,17 @@
 use serde::{Deserialize, Serialize};
 
-type RawFramesData = Vec<Vec<Vec<u8>>>;
+pub type RawFrame = Vec<u8>;
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct RawFrames(u32, u32, RawFramesData);
+pub struct RawFrames(u32, u32, Vec<RawFrame>);
 
 impl RawFrames {
-    pub fn new(width: u32, height: u32, data: RawFramesData) -> Self {
+    pub fn new(width: u32, height: u32, data: Vec<RawFrame>) -> Self {
         Self(width, height, data)
+    }
+
+    pub fn frame(&self, index: usize) -> Vec<u8> {
+        self.2.get(index).unwrap().to_owned()
     }
 
     pub fn width(&self) -> u32 {

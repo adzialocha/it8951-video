@@ -1,4 +1,5 @@
 use std::fmt;
+use std::mem;
 use std::str;
 use std::time::Duration;
 
@@ -12,6 +13,9 @@ use crate::usb::ScsiOverUsbConnection;
 const ENDPOINT_IN: u8 = 0x81;
 const ENDPOINT_OUT: u8 = 0x02;
 const SCSI_TIMEOUT_MS: u64 = 1000;
+
+/// Maximum transfer size is 60k bytes for IT8951 USB.
+const MAX_TRANSFER: usize = 60 * 1024;
 
 /// Customer command.
 const CUSTOMER_CMD: u8 = 0xfe;
@@ -46,6 +50,26 @@ const GET_SYS_CMD: [u8; 16] = [
     0x01, // Version[1]
     0x00, // Version[2]
     0x02,
+    0x00,
+    0x00,
+    0x00,
+    0x00,
+    0x00,
+];
+
+/// Command to load image area into memory.
+const LD_IMAGE_AREA_CMD: [u8; 16] = [
+    CUSTOMER_CMD,
+    0x00,
+    0x00,
+    0x00,
+    0x00,
+    0x00,
+    0xa2,
+    0x00,
+    0x00,
+    0x00,
+    0x00,
     0x00,
     0x00,
     0x00,
@@ -184,18 +208,43 @@ impl fmt::Display for Mode {
 #[repr(C)]
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub struct SystemInfo {
+    /// Standard command number2T-con Communication Protocol.
     standard_cmd_no: u32,
+
+    /// Extend command number.
     extended_cmd_no: u32,
+
+    /// 31 35 39 38 (8951).
     signature: u32,
+
+    /// Command table version.
     pub version: u32,
+
+    /// Panel width.
     pub width: u32,
+
+    /// Panel height.
     pub height: u32,
-    pub update_buf_base: u32,
+
+    /// Update Buffer Address.
+    pub update_buffer_base: u32,
+
+    /// Image Buffer Address(index 0).
     pub image_buffer_base: u32,
+
+    /// Temperature segment number.
     temperature_no: u32,
-    pub mode: Mode,
+
+    /// Display mode number.
+    mode: Mode,
+
+    /// Frame count for each mode(8).
     frame_count: [u32; 8],
+
+    /// Numbers of Image buffer.
     num_img_buf: u32,
+
+    /// Don’t care.
     reserved: [u32; 9],
 }
 
@@ -237,6 +286,19 @@ struct DisplayArea {
     w: u32,
     h: u32,
     wait_ready: u32,
+}
+
+#[repr(C)]
+#[derive(Serialize, Deserialize, PartialEq, Debug)]
+struct Register(u8, u8, u8, u8);
+
+impl Register {
+    pub fn as_u32_be(&self) -> u32 {
+        ((self.0 as u32) << 24)
+            | ((self.1 as u32) << 16)
+            | ((self.2 as u32) << 8)
+            | ((self.3 as u32) << 0)
+    }
 }
 
 /// Talk to the It8951 e-paper display via a USB connection.
@@ -324,9 +386,11 @@ impl API {
             0x00,
         ];
 
-        let result: u32 = self.connection.read_command(&command, bincode::options())?;
+        let result: Register = self
+            .connection
+            .read_command(&command, bincode::options().with_big_endian())?;
 
-        Ok(result)
+        Ok(result.as_u32_be())
     }
 
     /// Set memory register value of controller.
@@ -415,6 +479,45 @@ impl API {
         self.connection.write_command_raw(&command, &data)
     }
 
+    /// Load image into buffer.
+    pub fn load_image_area(&mut self, address: u32, data: &[u8]) -> rusb::Result<()> {
+        let system_info = self.get_system_info();
+
+        let w: usize = system_info.width as usize / 8; // Divide by 8 for 1bpp size
+        let h: usize = system_info.height as usize;
+        let size = w * h;
+
+        // We send the image in bands of MAX_TRANSFER
+        let mut i: usize = 0;
+        let mut row_height = (MAX_TRANSFER - mem::size_of::<Area>()) / w;
+
+        while i < size {
+            // We don't want to go beyond the end with the last band
+            if (i / w) + row_height > h {
+                row_height = h - (i / w);
+            }
+
+            // The sent image will be collected by IT8951 whatever Host sends partial or full
+            // image
+            self.connection.write_command(
+                &LD_IMAGE_AREA_CMD,
+                Area {
+                    address,
+                    x: 0,
+                    y: (i / w) as u32,
+                    w: w as u32,
+                    h: row_height as u32,
+                },
+                &data[i..i + w * row_height],
+                bincode::options().with_big_endian(),
+            )?;
+
+            i += row_height * w;
+        }
+
+        Ok(())
+    }
+
     pub fn display_image(&mut self, address: u32, mode: Mode) -> rusb::Result<()> {
         let system_info = self.get_system_info();
 
@@ -427,7 +530,7 @@ impl API {
                 y: 0,
                 w: system_info.width,
                 h: system_info.height,
-                wait_ready: 1,
+                wait_ready: 2,
             },
             &[],
             bincode::options().with_big_endian(),

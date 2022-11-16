@@ -30,10 +30,28 @@ fn main() -> Result<()> {
 
     // Get system information
     let system_info = api.get_system_info();
-    let base_address = system_info.image_buffer_base;
+    let update_buffer_base = system_info.update_buffer_base;
+    let image_buffer_base = system_info.image_buffer_base;
     let width = system_info.width;
     let height = system_info.height;
-    let image_size = width * height / 8;
+
+    // Calculate byte size of each 1bpp image
+    let image_size = (width * height) / 8;
+
+    println!(
+        r#"
+      Panel Dimensions: {}x{}
+ Update Buffer Address: 0x{:x}
+  Image Buffer Address: 0x{:x}
+            Image size: {} bytes
+        "#,
+        width, height, update_buffer_base, image_buffer_base, image_size
+    );
+
+    // Make sure the file and display dimension actually match
+    assert_eq!(frames.width(), width);
+    assert_eq!(frames.height(), height);
+    assert_eq!(frames.get(0).len(), image_size as usize);
 
     // Send SCSI inquiry command
     api.inquiry()?;
@@ -41,35 +59,39 @@ fn main() -> Result<()> {
     // Set VCOM value
     api.set_vcom(1_580)?; // -1.58
 
-    // Clear screen first
-    /* api.display_image(base_address, Mode::INIT)?;
-    thread::sleep(Duration::from_millis(3500)); */
+    // Clear screen by setting it to white
+    api.display_image(0x00, Mode::INIT)?;
+    thread::sleep(Duration::from_millis(3500));
 
-    // Enable 1bit drawing and image pitch mode
+    // Write images to buffer
+    api.load_image_area(image_buffer_base + (image_size * 0), &frames.get(0))?;
+    api.load_image_area(image_buffer_base + (image_size * 1), &frames.get(1))?;
+    api.load_image_area(image_buffer_base + (image_size * 2), &frames.get(2))?;
+    api.load_image_area(image_buffer_base + (image_size * 3), &frames.get(3))?;
+
+    // Enable 1bit drawing mode flag at bit 18
+    // 0000 0000 0000 0100 0000 0000 0000 0000
+    //                 ^
+    // 113B      113A      1139      1138
     let reg = api.get_memory_register_value(0x1800_1138)?;
-    api.set_memory_register_value(0x1800_1138, reg | (1 << 18) | (1 << 17))?;
-
-    // Set image pitch width
-    api.set_memory_register_value(0x1800_124c, frames.width() / 8 / 4)?;
+    api.set_memory_register_value(0x1800_1138, reg | 1 << 18)?;
 
     // Set bitmap mode color definition (0 - set black(0x00), 1 - set white(0xf0))
     api.set_memory_register_value(0x1800_1250, 0xf0 | (0x00 << 8))?;
 
-    // Make sure the file and display dimension actually match
-    assert_eq!(frames.width(), width);
-    assert_eq!(frames.height(), height);
-
-    // Write images to buffer
-    api.fast_write_to_memory(base_address + (image_size * 0), &frames.get(4))?;
-    // api.fast_write_to_memory(base_address + (image_size * 1), &frames.get(1))?;
-    // api.fast_write_to_memory(base_address + (image_size * 2), &frames.get(2))?;
-    // api.fast_write_to_memory(base_address + (image_size * 3), &frames.get(3))?;
+    // Enable 1bit drawing and image pitch mode
+    // api.set_memory_register_value(0x1800_1138, reg | (1 << 18) | (1 << 17))?; */
+    // Set image pitch width
+    // api.set_memory_register_value(0x1800_124c, frames.width() / 8 / 4)?;
 
     // ... and display them
-    api.display_image(base_address + (image_size * 0), Mode::A2)?;
-    // api.display_image(base_address + (image_size * 1), Mode::A2)?;
-    // api.display_image(base_address + (image_size * 2), Mode::A2)?;
-    // api.display_image(base_address + (image_size * 3), Mode::A2)?;
+    api.display_image(image_buffer_base + (image_size * 0), Mode::GL16)?;
+    api.display_image(image_buffer_base + (image_size * 1), Mode::A2)?;
+    api.display_image(image_buffer_base + (image_size * 2), Mode::A2)?;
+    api.display_image(image_buffer_base + (image_size * 3), Mode::A2)?;
+
+    // Reset register to original value
+    api.set_memory_register_value(0x1800_1138, reg)?;
 
     Ok(())
 }

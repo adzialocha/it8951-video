@@ -59,10 +59,6 @@ Video Dimensions: {}x{}
     assert_eq!(frames.height(), height);
     assert_eq!(frames.get(0).len(), image_size as usize);
 
-    // Send SCSI inquiry command
-    // @TODO: Can this be removed?
-    api.inquiry()?;
-
     // Set VCOM value
     api.set_vcom(1_580)?; // -1.58
 

@@ -31,11 +31,6 @@ const PMIC_CONTROL_CMD: u8 = 0xa3;
 // Write to memory in fast mode.
 const FAST_WRITE_CMD: u8 = 0xa5;
 
-/// SCSI inquiry command.
-const INQUIRY_CMD: [u8; 16] = [
-    0x12, 0x00, 0x00, 0x00, 0x00, 0x00, 0x81, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-];
-
 /// Command to retreive system information.
 const GET_SYS_CMD: [u8; 16] = [
     CUSTOMER_CMD,
@@ -229,23 +224,6 @@ pub struct SystemInfo {
 
 #[repr(C)]
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
-struct CInquiry {
-    ignore_start: [u8; 8],
-    pub vendor: [u8; 8],
-    pub product: [u8; 16],
-    pub revision: [u8; 4],
-    ignore_end: [u8; 4],
-}
-
-/// SCSI inquiry command.
-pub struct Inquiry {
-    pub vendor: String,
-    pub product: String,
-    pub revision: String,
-}
-
-#[repr(C)]
-#[derive(Serialize, Deserialize, PartialEq, Debug)]
 struct DisplayArea {
     address: u32,
     display_mode: Mode,
@@ -314,19 +292,6 @@ impl API {
     /// Return system info about e-paper display.
     pub fn get_system_info(&self) -> &SystemInfo {
         &self.system_info
-    }
-
-    /// Send SCSCI inquiry command to receive device information.
-    pub fn inquiry(&mut self) -> rusb::Result<Inquiry> {
-        let c_inquiry: CInquiry = self
-            .connection
-            .read_command(&INQUIRY_CMD, bincode::options())?;
-
-        Ok(Inquiry {
-            vendor: str::from_utf8(&c_inquiry.vendor).unwrap().to_string(),
-            product: str::from_utf8(&c_inquiry.product).unwrap().to_string(),
-            revision: str::from_utf8(&c_inquiry.revision).unwrap().to_string(),
-        })
     }
 
     /// Read value from memory register of controller.

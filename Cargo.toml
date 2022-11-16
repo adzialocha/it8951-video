@@ -14,10 +14,12 @@ path = "src/bin/display.rs"
 [dependencies]
 anyhow = "1.0.66"
 bincode = "1.3.3"
+ctrlc = "3.2.3"
+ffmpeg-next = "5.1.1"
 image = "0.24.5"
 itertools = "0.10.5"
 ndarray = "0.15.6"
+pbr = "1.0.4"
 rusb = "0.9.1"
 serde = { version = "1.0.147", features = ["derive"] }
 structopt = "0.3.26"
-video-rs = { version = "0.1.3", features = ["ndarray"] }

@@ -1,6 +1,5 @@
+use std::fs;
 use std::path::PathBuf;
-use std::time::Duration;
-use std::{fs, thread};
 
 use anyhow::Result;
 use structopt::StructOpt;

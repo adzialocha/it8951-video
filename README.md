@@ -68,10 +68,11 @@ FLAGS:
     -V, --version    Prints version information
 
 OPTIONS:
-    -h, --height <height>    Input video height [default: 1392]
-    -t, --take <take>        Render every nth frame from video data [default: 4]
+    -g, --ghost <ghost>      Paint in GL16 mode every nth frame [default: 32]
+    -t, --take <take>        Render every nth frame from video data [default: 5]
     -v, --vcom <vcom>        VCOM value [default: -1.58]
     -w, --width <width>      Input video width [default: 1856]
+    -h, --height <height>    Input video height [default: 1392]
 
 ARGS:
     <input>    Input raw data file

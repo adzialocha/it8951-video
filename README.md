@@ -2,6 +2,8 @@
 
 Play videos on IT8951-controlled e-paper displays via USB. This has been tested with a [Waveshare 7.8inch e-Paper HAT](https://www.waveshare.com/wiki/7.8inch_e-Paper_HAT) display.
 
+![Example Video](example.gif)
+
 ## Design
 
 This runs fairly smooth considering it is a e-Paper display (~5 fps) which has not been optimized for video usage. The following "tricks" have been used:

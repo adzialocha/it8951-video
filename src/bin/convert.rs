@@ -83,7 +83,7 @@ fn extract_video_frames(
 
                 chunk.enumerate().for_each(|(index, (_, _, luma))| {
                     if luma.0[0] == 255 {
-                        byte |= base.pow(7 - index as u32);
+                        byte |= base.pow(index as u32);
                     }
                 });
 

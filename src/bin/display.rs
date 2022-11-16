@@ -1,6 +1,5 @@
+use std::fs;
 use std::path::PathBuf;
-use std::thread;
-use std::{fs, time::Duration};
 
 use anyhow::Result;
 use structopt::StructOpt;
@@ -59,30 +58,24 @@ fn main() -> Result<()> {
     // Set VCOM value
     api.set_vcom(1_580)?; // -1.58
 
-    // Clear screen by setting it to white
-    api.display_image(0x00, Mode::INIT)?;
-    thread::sleep(Duration::from_millis(3500));
-
     // Write images to buffer
     api.load_image_area(image_buffer_base + (image_size * 0), &frames.get(0))?;
     api.load_image_area(image_buffer_base + (image_size * 1), &frames.get(1))?;
     api.load_image_area(image_buffer_base + (image_size * 2), &frames.get(2))?;
     api.load_image_area(image_buffer_base + (image_size * 3), &frames.get(3))?;
 
-    // Enable 1bit drawing mode flag at bit 18
-    // 0000 0000 0000 0100 0000 0000 0000 0000
-    //                 ^
+    // Enable 1bit drawing and image pitch mode
+    // 0000 0000 0000 0110 0000 0000 0000 0000
+    // |         |     ^^  |         |
     // 113B      113A      1139      1138
     let reg = api.get_memory_register_value(0x1800_1138)?;
-    api.set_memory_register_value(0x1800_1138, reg | 1 << 18)?;
+    api.set_memory_register_value(0x1800_1138, reg | (1 << 18) | (1 << 17))?;
 
     // Set bitmap mode color definition (0 - set black(0x00), 1 - set white(0xf0))
     api.set_memory_register_value(0x1800_1250, 0xf0 | (0x00 << 8))?;
 
-    // Enable 1bit drawing and image pitch mode
-    // api.set_memory_register_value(0x1800_1138, reg | (1 << 18) | (1 << 17))?; */
     // Set image pitch width
-    // api.set_memory_register_value(0x1800_124c, frames.width() / 8 / 4)?;
+    api.set_memory_register_value(0x1800_124c, frames.width() / 4)?;
 
     // ... and display them
     api.display_image(image_buffer_base + (image_size * 0), Mode::GL16)?;
@@ -92,6 +85,9 @@ fn main() -> Result<()> {
 
     // Reset register to original value
     api.set_memory_register_value(0x1800_1138, reg)?;
+
+    // Clean up afterwards, by setting screen to white
+    api.display_image(0x00, Mode::INIT)?;
 
     Ok(())
 }

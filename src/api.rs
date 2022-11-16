@@ -57,26 +57,6 @@ const GET_SYS_CMD: [u8; 16] = [
     0x00,
 ];
 
-/// Command to load image area into memory.
-const LD_IMAGE_AREA_CMD: [u8; 16] = [
-    CUSTOMER_CMD,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0xa2,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-];
-
 /// Command to display image in an area.
 const DPY_AREA_CMD: [u8; 16] = [
     CUSTOMER_CMD,
@@ -497,20 +477,7 @@ impl API {
                 row_height = h - (i / w);
             }
 
-            // The sent image will be collected by IT8951 whatever Host sends partial or full
-            // image
-            self.connection.write_command(
-                &LD_IMAGE_AREA_CMD,
-                Area {
-                    address,
-                    x: 0,
-                    y: (i / w) as u32,
-                    w: w as u32,
-                    h: row_height as u32,
-                },
-                &data[i..i + w * row_height],
-                bincode::options().with_big_endian(),
-            )?;
+            self.fast_write_to_memory(address + i as u32, &data[i..i + w * row_height])?;
 
             i += row_height * w;
         }

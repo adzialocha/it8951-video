@@ -44,11 +44,10 @@ fn extract_video_frames(
     let data = decoder
         .decode_iter()
         .take_while(Result::is_ok)
-        .take(5)
         .map(|frame| frame.unwrap())
         .enumerate()
         .map(|(index, (_, raw_frame))| {
-            println!("Convert frame {index}");
+            println!("Convert frame {}", index + 1);
 
             let size = raw_frame.shape();
             let width = size[0] as u32;

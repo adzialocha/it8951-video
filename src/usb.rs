@@ -7,7 +7,7 @@ use rusb::{DeviceHandle, Error, GlobalContext, Result};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Eq, PartialEq, Debug)]
-pub enum Direction {
+enum Direction {
     IN,
     OUT,
 }
@@ -26,7 +26,7 @@ struct CommandBlockWrapper {
 
 #[repr(C)]
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
-pub struct CommandStatusWrapper {
+struct CommandStatusWrapper {
     signature: [u8; 4],
     tag: u32,
     data_residue: u32,
@@ -149,7 +149,7 @@ impl ScsiOverUsbConnection {
     }
 }
 
-pub fn get_command_block_wrapper(
+fn get_command_block_wrapper(
     command_data: &[u8; 16],
     data_transfer_length: u32,
     direction: Direction,

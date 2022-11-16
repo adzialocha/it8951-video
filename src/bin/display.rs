@@ -1,10 +1,15 @@
-use std::fs;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::{fs, sync::Arc};
 
 use anyhow::Result;
+use itertools::Itertools;
 use structopt::StructOpt;
 
 use it8951_video::{Mode, RawFrames, API};
+
+/// Number of frames being loaded into memory before displaying.
+const BUFFER_SIZE: usize = 8;
 
 #[derive(Debug, StructOpt)]
 #[structopt(
@@ -24,6 +29,10 @@ struct Opt {
     #[structopt(short = "h", long = "height", default_value = "1392")]
     height: u32,
 
+    /// Render every nth frame from video data.
+    #[structopt(short = "t", long = "take", default_value = "4")]
+    take: usize,
+
     /// VCOM value.
     #[structopt(short = "v", long = "vcom", default_value = "-1.58")]
     vcom: f32,
@@ -31,25 +40,32 @@ struct Opt {
 
 fn main() -> Result<()> {
     let opt = Opt::from_args();
-    let width = opt.width;
-    let height = opt.height;
+
+    // Prepare handler which informs us about exit when [CTRL] + [C] got pressed
+    let running = Arc::new(AtomicBool::new(true));
+    let running_clone = running.clone();
+    ctrlc::set_handler(move || {
+        running_clone.store(false, Ordering::SeqCst);
+    })
+    .expect("Error setting Ctrl-C handler");
 
     // Read raw frame data
     let data = fs::read(opt.input)?;
     let frames: RawFrames = bincode::deserialize(&data)?;
 
     // Connect to IT8951 controlled display
-    let mut api = API::connect(width, height)?;
+    let mut api = API::connect(opt.width, opt.height)?;
 
     // Get system information
     let system_info = api.get_system_info();
     let image_buffer_base = system_info.image_buffer_base;
 
     // Calculate byte size of each 1bpp image
-    let image_size = (width * height) / 8;
+    let image_size = (opt.width * opt.height) / 8;
 
     println!(
-        r#"
+        r#"► Play video on e-paper
+
       VCOM value: {}
 Panel Dimensions: {}x{}
 Video Dimensions: {}x{}
@@ -59,47 +75,70 @@ Video Dimensions: {}x{}
         opt.vcom,
         system_info.width,
         system_info.height,
-        width,
-        height,
+        opt.width,
+        opt.height,
         image_buffer_base,
         image_size
     );
 
     // Make sure the file and display dimension actually match
-    assert_eq!(frames.width(), width);
-    assert_eq!(frames.height(), height);
-    assert_eq!(frames.get(0).len(), image_size as usize);
+    assert_eq!(frames.width(), opt.width);
+    assert_eq!(frames.height(), opt.height);
+    assert_eq!(
+        frames.get(0).expect("No data given in video file").len(),
+        image_size as usize
+    );
 
     // Set VCOM value
+    assert!(opt.vcom > -5.0 && opt.vcom < 0.0);
     api.set_vcom(opt.vcom)?;
 
-    // Write images to buffer
-    api.set_memory(image_buffer_base + (image_size * 0), &frames.get(0))?;
-    api.set_memory(image_buffer_base + (image_size * 1), &frames.get(1))?;
-    api.set_memory(image_buffer_base + (image_size * 2), &frames.get(2))?;
-    api.set_memory(image_buffer_base + (image_size * 3), &frames.get(3))?;
-
-    // Enable 1bit drawing and image pitch mode
-    // 0000 0000 0000 0110 0000 0000 0000 0000
-    // |         |     ^^  |         |
-    // 113B      113A      1139      1138
+    // Remember register value for later
     let reg = api.get_memory_register_value(0x1800_1138)?;
-    api.set_memory_register_value(0x1800_1138, reg | (1 << 18) | (1 << 17))?;
 
-    // Set bitmap mode color definition (0 - set black(0x00), 1 - set white(0xf0))
-    api.set_memory_register_value(0x1800_1250, 0xf0 | (0x00 << 8))?;
+    // Write images to buffer
+    assert!(opt.take > 0);
+    for frames_chunk in &frames
+        .iter()
+        .enumerate()
+        .skip_while(|(i, _)| i % opt.take != 0)
+        .chunks(BUFFER_SIZE)
+    {
+        let mut frames_count = 0;
 
-    // Set image pitch width
-    api.set_memory_register_value(0x1800_124c, (width / 8) / 4)?;
+        // Exit here if user decided to quit program early
+        if !running.load(Ordering::SeqCst) {
+            break;
+        }
 
-    // Draw first image properly (this is slower)
-    api.display_image(image_buffer_base + (image_size * 0), Mode::GL16)?;
+        // Load images into buffer
+        for (index, frame) in frames_chunk.enumerate() {
+            api.set_memory(image_buffer_base + (image_size * index as u32), &frame.1)?;
+            frames_count += 1;
+        }
 
-    // ... and display the others with a faster mode
-    api.display_image(image_buffer_base + (image_size * 0), Mode::A2)?;
-    api.display_image(image_buffer_base + (image_size * 1), Mode::A2)?;
-    api.display_image(image_buffer_base + (image_size * 2), Mode::A2)?;
-    api.display_image(image_buffer_base + (image_size * 3), Mode::A2)?;
+        // Enable 1bit drawing and image pitch mode
+        // 0000 0000 0000 0110 0000 0000 0000 0000
+        // |         |     ^^  |         |
+        // 113B      113A      1139      1138
+        api.set_memory_register_value(0x1800_1138, reg | (1 << 18) | (1 << 17))?;
+
+        // Set bitmap mode color definition (0 - set black(0x00), 1 - set white(0xf0))
+        api.set_memory_register_value(0x1800_1250, 0xf0 | (0x00 << 8))?;
+
+        // Set image pitch width
+        api.set_memory_register_value(0x1800_124c, (opt.width / 8) / 4)?;
+
+        // Draw first image properly (this is slower) to avoid too much ghosting
+        api.display_image(image_buffer_base + (image_size * 0), Mode::GL16)?;
+
+        // ... and display the others with a faster mode
+        if frames_count > 1 {
+            for index in 1..frames_count {
+                api.display_image(image_buffer_base + (image_size * index as u32), Mode::A2)?;
+            }
+        }
+    }
 
     // Reset register to original value
     api.set_memory_register_value(0x1800_1138, reg)?;

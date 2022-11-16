@@ -1,8 +1,10 @@
+use std::slice::Iter;
+
 use serde::{Deserialize, Serialize};
 
 pub type RawFrame = Vec<u8>;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RawFrames(u32, u32, Vec<RawFrame>);
 
 impl RawFrames {
@@ -10,8 +12,16 @@ impl RawFrames {
         Self(width, height, data)
     }
 
-    pub fn get(&self, index: usize) -> Vec<u8> {
-        self.2.get(index).unwrap().to_owned()
+    pub fn len(&self) -> usize {
+        self.2.len()
+    }
+
+    pub fn iter(&self) -> Iter<RawFrame> {
+        self.2.iter()
+    }
+
+    pub fn get(&self, index: usize) -> Option<&Vec<u8>> {
+        self.2.get(index)
     }
 
     pub fn width(&self) -> u32 {

@@ -10,7 +10,7 @@ This runs fairly smooth considering it is a e-Paper display (roughly 4.5 fps) wh
 * Pack pixel information for every frame into 1bit (black = 0, white = 1) and store it in a file so it can be played later (don't do this on-the-fly as the dithering process takes too much time)
 * Activate undocumented 1bpp (1 bit per pixel) and "pitch" mode on IT8951 by flipping the bits in the `0x1800_1138` register before displaying
 * Store frame data via "fast write" (fw) `0xa5` command in memory
-* Since the data is smaller now than grayscale images we can store multiple frames in the image buffer (which usually only has space for one image)
+* Since the data is smaller now (322944 bytes) than grayscale images we can store up to 8 frames in the image buffer (which usually only has space for one image)
 * Always write in `A2` mode since it is fast and does not cause any flashing with b/w-only data. Use `GL16` mode sometimes, just to make sure the ghosting does not minder the quality too much
 
 ## Requirements
@@ -86,5 +86,5 @@ cargo run --bin it8951-video-display test.raw
 
 ## Credits
 
-* Bastian for finding almost every hack which made that work at all
+* Bastian for finding almost every hack which made this work at all
 * https://github.com/faassen/rust-it8951 for the SCSI over USB communication with IT8951

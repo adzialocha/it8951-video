@@ -1,5 +1,4 @@
 use std::fmt;
-use std::mem;
 use std::str;
 use std::time::Duration;
 
@@ -245,17 +244,6 @@ pub struct Inquiry {
     pub revision: String,
 }
 
-/// An area.
-#[repr(C)]
-#[derive(Serialize, Deserialize, PartialEq, Debug)]
-struct Area {
-    address: u32,
-    x: u32,
-    y: u32,
-    w: u32,
-    h: u32,
-}
-
 #[repr(C)]
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 struct DisplayArea {
@@ -263,28 +251,24 @@ struct DisplayArea {
     display_mode: Mode,
     x: u32,
     y: u32,
-    w: u32,
-    h: u32,
+    width: u32,
+    height: u32,
     wait_ready: u32,
 }
 
-#[repr(C)]
-#[derive(Serialize, Deserialize, PartialEq, Debug)]
-struct Register(u8, u8, u8, u8);
-
-impl Register {
-    pub fn as_u32_be(&self) -> u32 {
-        ((self.0 as u32) << 24)
-            | ((self.1 as u32) << 16)
-            | ((self.2 as u32) << 8)
-            | ((self.3 as u32) << 0)
-    }
-}
-
-/// Talk to the It8951 e-paper display via a USB connection.
+/// Talk to the IT8951 e-paper display via a USB connection.
 pub struct API {
+    /// SCSI over USB Device handler.
     connection: ScsiOverUsbConnection,
+
+    /// System information from IT8951.
     system_info: SystemInfo,
+
+    /// Target image width.
+    width: u32,
+
+    /// Target image height.
+    height: u32,
 }
 
 impl Drop for API {
@@ -298,7 +282,7 @@ impl Drop for API {
 
 impl API {
     /// Establish a connection to the e-paper display via the USB port.
-    pub fn connect() -> rusb::Result<Self> {
+    pub fn connect(width: u32, height: u32) -> rusb::Result<Self> {
         // Get USB device handle based on vendor ID and product ID. Make sure you have these values
         // whitelisted in your OS configuration aka /etc/udev/rules.d
         let mut device_handle =
@@ -322,6 +306,8 @@ impl API {
         Ok(Self {
             connection,
             system_info,
+            width,
+            height,
         })
     }
 
@@ -366,11 +352,11 @@ impl API {
             0x00,
         ];
 
-        let result: Register = self
+        let result: u32 = self
             .connection
             .read_command(&command, bincode::options().with_big_endian())?;
 
-        Ok(result.as_u32_be())
+        Ok(result)
     }
 
     /// Set memory register value of controller.
@@ -461,15 +447,13 @@ impl API {
 
     /// Load image into buffer.
     pub fn load_image_area(&mut self, address: u32, data: &[u8]) -> rusb::Result<()> {
-        let system_info = self.get_system_info();
-
-        let w: usize = system_info.width as usize / 8; // Divide by 8 for 1bpp size
-        let h: usize = system_info.height as usize;
+        let w: usize = self.width as usize / 8; // Divide by 8 for 1bpp size
+        let h: usize = self.height as usize;
         let size = w * h;
 
         // We send the image in bands of MAX_TRANSFER
         let mut i: usize = 0;
-        let mut row_height = (MAX_TRANSFER - mem::size_of::<Area>()) / w;
+        let mut row_height = MAX_TRANSFER / w;
 
         while i < size {
             // We don't want to go beyond the end with the last band
@@ -486,8 +470,6 @@ impl API {
     }
 
     pub fn display_image(&mut self, address: u32, mode: Mode) -> rusb::Result<()> {
-        let system_info = self.get_system_info();
-
         self.connection.write_command(
             &DPY_AREA_CMD,
             DisplayArea {
@@ -495,9 +477,30 @@ impl API {
                 display_mode: mode,
                 x: 0,
                 y: 0,
-                w: system_info.width,
-                h: system_info.height,
-                wait_ready: 2,
+                width: self.width,
+                height: self.height,
+                wait_ready: 1,
+            },
+            &[],
+            bincode::options().with_big_endian(),
+        )?;
+
+        Ok(())
+    }
+
+    pub fn clear_display(&mut self) -> rusb::Result<()> {
+        let system_info = self.get_system_info();
+
+        self.connection.write_command(
+            &DPY_AREA_CMD,
+            DisplayArea {
+                address: 0x00,
+                display_mode: Mode::INIT,
+                x: 0,
+                y: 0,
+                width: system_info.width,
+                height: system_info.height,
+                wait_ready: 1,
             },
             &[],
             bincode::options().with_big_endian(),

@@ -24,10 +24,12 @@ struct Opt {
     #[structopt(parse(from_os_str))]
     output: PathBuf,
 
-    #[structopt(short = "w", long = "width", default_value = "1872")]
+    /// Output video width.
+    #[structopt(short = "w", long = "width", default_value = "1856")]
     width: u32,
 
-    #[structopt(short = "h", long = "height", default_value = "1404")]
+    /// Output video height.
+    #[structopt(short = "h", long = "height", default_value = "1392")]
     height: u32,
 }
 
@@ -105,6 +107,14 @@ fn write_raw_frames(file_path: PathBuf, frames: &RawFrames) -> Result<()> {
 
 fn main() -> Result<()> {
     let opt = Opt::from_args();
+
+    println!(
+        r#"
+Video Dimensions: {}x{}
+        "#,
+        opt.width, opt.height
+    );
+
     let frames = extract_video_frames(opt.video.clone(), opt.width, opt.height)?;
     write_raw_frames(opt.output, &frames)?;
     Ok(())

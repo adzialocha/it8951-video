@@ -4,7 +4,7 @@ Play videos on IT8951-controlled e-paper displays via USB. This has been tested 
 
 ## Design
 
-This runs fairly smooth considering it is a e-Paper display (roughly 4.5 fps) which has not been optimized for video usage. The following "tricks" have been used:
+This runs fairly smooth considering it is a e-Paper display (~5 fps) which has not been optimized for video usage. The following "tricks" have been used:
 
 * Convert every video frame into an image which only contains black or white pixels (via dithering)
 * Pack pixel information for every frame into 1bit (black = 0, white = 1) and store it in a file so it can be played later (don't do this on-the-fly as the dithering process takes too much time)

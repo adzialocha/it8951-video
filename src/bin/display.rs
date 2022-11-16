@@ -63,10 +63,10 @@ Video Dimensions: {}x{}
     api.set_vcom(1_580)?; // -1.58
 
     // Write images to buffer
-    api.load_image_area(image_buffer_base + (image_size * 0), &frames.get(0))?;
-    api.load_image_area(image_buffer_base + (image_size * 1), &frames.get(1))?;
-    api.load_image_area(image_buffer_base + (image_size * 2), &frames.get(2))?;
-    api.load_image_area(image_buffer_base + (image_size * 3), &frames.get(3))?;
+    api.set_memory(image_buffer_base + (image_size * 0), &frames.get(0))?;
+    api.set_memory(image_buffer_base + (image_size * 1), &frames.get(1))?;
+    api.set_memory(image_buffer_base + (image_size * 2), &frames.get(2))?;
+    api.set_memory(image_buffer_base + (image_size * 3), &frames.get(3))?;
 
     // Enable 1bit drawing and image pitch mode
     // 0000 0000 0000 0110 0000 0000 0000 0000

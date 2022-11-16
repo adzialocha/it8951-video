@@ -13,9 +13,6 @@ const ENDPOINT_IN: u8 = 0x81;
 const ENDPOINT_OUT: u8 = 0x02;
 const SCSI_TIMEOUT_MS: u64 = 1000;
 
-/// Maximum transfer size is 60k bytes for IT8951 USB.
-const MAX_TRANSFER: usize = 60 * 1024;
-
 /// Customer command.
 const CUSTOMER_CMD: u8 = 0xfe;
 
@@ -28,7 +25,7 @@ const WRITE_REG_CMD: u8 = 0x84;
 /// PMIC (Power Management Integrated Circuits) command.
 const PMIC_CONTROL_CMD: u8 = 0xa3;
 
-// Write to memory in fast mode.
+// Write to memory in fast mode command.
 const FAST_WRITE_CMD: u8 = 0xa5;
 
 /// Command to retreive system information.
@@ -59,7 +56,7 @@ const DPY_AREA_CMD: [u8; 16] = [
     0x00,
     0x00,
     0x00,
-    0x94,
+    0x94, // Display area command
     0x00,
     0x00,
     0x00,
@@ -79,7 +76,7 @@ const SOFTWARE_RESET_CMD: [u8; 16] = [
     0x00,
     0x00,
     0x00,
-    0xa7,
+    0xa7, // Software reset command
     0x00,
     0x00,
     0x00,
@@ -225,12 +222,25 @@ pub struct SystemInfo {
 #[repr(C)]
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 struct DisplayArea {
+    /// Memory address to load image buffer from.
     address: u32,
+
+    /// E-panel display mode.
     display_mode: Mode,
+
+    /// Display from top position x.
     x: u32,
+
+    /// Display from left position y.
     y: u32,
+
+    /// Width of data to be displayed.
     width: u32,
+
+    /// Height of data to be displayed.
     height: u32,
+
+    /// Waiting time before signalling being ready.
     wait_ready: u32,
 }
 
@@ -384,7 +394,7 @@ impl API {
     }
 
     /// Write any data to memory using fast-write mode.
-    pub fn fast_write_to_memory(&mut self, address: u32, data: &[u8]) -> rusb::Result<()> {
+    pub fn set_memory(&mut self, address: u32, data: &[u8]) -> rusb::Result<()> {
         let address_8 = address.to_be_bytes();
         let data_len_8 = (data.len() as u16).to_be_bytes();
 
@@ -410,38 +420,18 @@ impl API {
         self.connection.write_command_raw(&command, &data)
     }
 
-    /// Load image into buffer.
-    pub fn load_image_area(&mut self, address: u32, data: &[u8]) -> rusb::Result<()> {
-        let w: usize = self.width as usize / 8; // Divide by 8 for 1bpp size
-        let h: usize = self.height as usize;
-        let size = w * h;
-
-        // We send the image in bands of MAX_TRANSFER
-        let mut i: usize = 0;
-        let mut row_height = MAX_TRANSFER / w;
-
-        while i < size {
-            // We don't want to go beyond the end with the last band
-            if (i / w) + row_height > h {
-                row_height = h - (i / w);
-            }
-
-            self.fast_write_to_memory(address + i as u32, &data[i..i + w * row_height])?;
-
-            i += row_height * w;
-        }
-
-        Ok(())
-    }
-
+    /// Display the centered image on e-panel with a given mode, loading it from the image buffer
+    /// in memory.
     pub fn display_image(&mut self, address: u32, mode: Mode) -> rusb::Result<()> {
+        let system_info = self.get_system_info();
+
         self.connection.write_command(
             &DPY_AREA_CMD,
             DisplayArea {
                 address,
                 display_mode: mode,
-                x: 0,
-                y: 0,
+                x: (system_info.width - self.width) / 2,
+                y: (system_info.height - self.height) / 2,
                 width: self.width,
                 height: self.height,
                 wait_ready: 1,
@@ -453,6 +443,7 @@ impl API {
         Ok(())
     }
 
+    /// Clear the screen by making it completly white.
     pub fn clear_display(&mut self) -> rusb::Result<()> {
         let system_info = self.get_system_info();
 

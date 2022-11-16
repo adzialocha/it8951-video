@@ -7,10 +7,11 @@ Play videos on IT8951-controlled e-paper displays via USB. This has been tested 
 This runs fairly smooth considering it is a e-Paper display (roughly 4.5 fps) which has not been optimized for video usage. The following "tricks" have been used:
 
 * Convert every video frame into an image which only contains black or white pixels (via dithering)
-* Pack pixel information for every frame into 1bit (black = 0, white = 1) and store it in a file so it can be played later (don't do this on-the-fly as it takes too much time)
-* Activate undocumented 1bpp (1 bit per pixel) and "pitch" mode on IT8951
-* Store frame data via fast memory write command in memory
+* Pack pixel information for every frame into 1bit (black = 0, white = 1) and store it in a file so it can be played later (don't do this on-the-fly as the dithering process takes too much time)
+* Activate undocumented 1bpp (1 bit per pixel) and "pitch" mode on IT8951 by flipping the bits in the `0x1800_1138` register before displaying
+* Store frame data via "fast write" (fw) `0xa5` command in memory
 * Since the data is smaller now than grayscale images we can store multiple frames in the image buffer (which usually only has space for one image)
+* Always write in `A2` mode since it is fast and does not cause any flashing with b/w-only data. Use `GL16` mode sometimes, just to make sure the ghosting does not minder the quality too much
 
 ## Requirements
 
@@ -79,7 +80,7 @@ ARGS:
 ## Development
 
 ```
-cargo run --bin it8951-video-convert -- test.mp4 test.raw
+cargo run --bin it8951-video-convert test.mp4 test.raw
 cargo run --bin it8951-video-display test.raw
 ```
 

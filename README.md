@@ -86,5 +86,5 @@ cargo run --bin it8951-video-display test.raw
 
 ## Credits
 
-* https://github.com/faassen/rust-it8951
-* Bastian
+* Bastian for finding almost every hack which made that work at all
+* https://github.com/faassen/rust-it8951 for the SCSI over USB communication with IT8951

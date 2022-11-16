@@ -23,6 +23,10 @@ struct Opt {
     /// Input video height.
     #[structopt(short = "h", long = "height", default_value = "1392")]
     height: u32,
+
+    /// VCOM value.
+    #[structopt(short = "v", long = "vcom", default_value = "-1.58")]
+    vcom: f32,
 }
 
 fn main() -> Result<()> {
@@ -46,12 +50,19 @@ fn main() -> Result<()> {
 
     println!(
         r#"
+      VCOM value: {}
 Panel Dimensions: {}x{}
 Video Dimensions: {}x{}
   Buffer Address: 0x{:x}
       Image size: {} bytes
         "#,
-        system_info.width, system_info.height, width, height, image_buffer_base, image_size
+        opt.vcom,
+        system_info.width,
+        system_info.height,
+        width,
+        height,
+        image_buffer_base,
+        image_size
     );
 
     // Make sure the file and display dimension actually match
@@ -60,7 +71,7 @@ Video Dimensions: {}x{}
     assert_eq!(frames.get(0).len(), image_size as usize);
 
     // Set VCOM value
-    api.set_vcom(1_580)?; // -1.58
+    api.set_vcom(opt.vcom)?;
 
     // Write images to buffer
     api.set_memory(image_buffer_base + (image_size * 0), &frames.get(0))?;

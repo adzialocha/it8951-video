@@ -362,8 +362,10 @@ impl API {
     }
 
     /// Set VCOM value of controller.
-    pub fn set_vcom(&mut self, vcom: u16) -> rusb::Result<()> {
-        let [vcom_h, vcom_l] = vcom.to_be_bytes();
+    pub fn set_vcom(&mut self, vcom: f32) -> rusb::Result<()> {
+        // For example: -1.58 gets converted to 1580
+        let converted = (vcom.abs() * 1000.0) as u16;
+        let [vcom_h, vcom_l] = converted.to_be_bytes();
 
         let data = [
             CUSTOMER_CMD,

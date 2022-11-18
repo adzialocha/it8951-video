@@ -137,7 +137,7 @@ async fn main() -> Result<()> {
 
         let threshold_matrix = ThresholdMatrix::new();
         let mut frame_counter = 0;
-        assert!(opt.take > 0);
+        assert!(opt.take > 0 && opt.take < 25);
 
         let mut receive_and_process_decoded_frames =
             |decoder: &mut ffmpeg_next::decoder::Video| -> Result<(), ffmpeg_next::Error> {
@@ -267,6 +267,7 @@ Video Dimensions: {}x{}
 
         // Write images to buffer
         let mut frame_counter = 0;
+        assert!(opt.ghost > 0);
         loop {
             if let Ok(true) = shutdown_rx_panel.try_recv() {
                 // Clean up afterwards, by setting screen to white

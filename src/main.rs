@@ -52,6 +52,7 @@ struct Opt {
     vcom: f32,
 }
 
+/// Helper to apply dithering to a field of pixels.
 struct ThresholdMatrix {
     nx: u32,
     ny: u32,

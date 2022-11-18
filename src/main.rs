@@ -101,6 +101,9 @@ impl ThresholdMatrix {
 #[tokio::main]
 async fn main() -> Result<()> {
     let opt = Opt::from_args();
+    assert!(opt.take > 0 && opt.take < 25);
+    assert!(opt.vcom < 0.0 && opt.vcom >= -5.0);
+    assert!(opt.ghost > 0);
 
     // Establish communication channels between both threads
     let (shutdown_tx, mut shutdown_rx) = broadcast::channel::<bool>(1);
@@ -137,7 +140,6 @@ async fn main() -> Result<()> {
 
         let threshold_matrix = ThresholdMatrix::new();
         let mut frame_counter = 0;
-        assert!(opt.take > 0 && opt.take < 25);
 
         let mut receive_and_process_decoded_frames =
             |decoder: &mut ffmpeg_next::decoder::Video| -> Result<(), ffmpeg_next::Error> {
@@ -244,7 +246,6 @@ Video Dimensions: {}x{}
         assert!(system_info.height >= opt.height);
 
         // Set VCOM value
-        assert!(opt.vcom < 0.0 && opt.vcom >= -5.0);
         api.set_vcom(opt.vcom).unwrap();
 
         // Remember register value for later
@@ -267,7 +268,6 @@ Video Dimensions: {}x{}
 
         // Write images to buffer
         let mut frame_counter = 0;
-        assert!(opt.ghost > 0);
         loop {
             if let Ok(true) = shutdown_rx_panel.try_recv() {
                 // Clean up afterwards, by setting screen to white

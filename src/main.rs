@@ -8,8 +8,6 @@ use ffmpeg_next::format::{input, Pixel};
 use ffmpeg_next::media::Type;
 use ffmpeg_next::software::scaling::{context::Context, flag::Flags};
 use ffmpeg_next::util::frame::video::Video;
-use image::GenericImageView;
-use itertools::Itertools;
 use structopt::StructOpt;
 use tokio::sync::broadcast;
 use tokio::sync::mpsc;
@@ -60,22 +58,31 @@ struct ThresholdMatrix {
 
 impl ThresholdMatrix {
     fn new() -> Self {
-        let texture = image::load(
-            std::io::Cursor::new(include_bytes!("blue-noise.png")),
-            image::ImageFormat::Png,
-        )
-        .unwrap()
-        .grayscale();
-        let dim = texture.dimensions();
+        let power_of_two = 8;
+        let side = 2_u32.pow(power_of_two);
+        let num_elements = side * side;
+        let norm_factor = 255_f32 / (num_elements as f32);
 
-        let matrix = (0..dim.0)
-            .cartesian_product(0..dim.1)
-            .map(|(x, y)| texture.get_pixel(x, y)[0])
-            .collect();
+        let mut matrix: Vec<u8> = Vec::new();
+        for x in 0..side {
+            for y in 0..side {
+                let xc = x ^ y;
+                let yc = y;
+                let mut v = 0;
+
+                for p in (0..power_of_two).rev() {
+                    let bit_idx = 2 * (power_of_two - p - 1);
+                    v |= ((yc >> p) & 1) << bit_idx;
+                    v |= ((xc >> p) & 1) << (bit_idx + 1);
+                }
+
+                matrix.push((v as f32 * norm_factor) as u8);
+            }
+        }
 
         Self {
-            nx: dim.0,
-            ny: dim.1,
+            nx: side,
+            ny: side,
             matrix,
         }
     }
@@ -150,17 +157,18 @@ async fn main() -> Result<()> {
 
                         // Dither and convert to raw format, representing black (0) or white (1) pixels
                         // in an array
-                        let base_two: u8 = 2;
                         let mut data_1bpp: Frame = vec![0b0000_0000; (width * height / 8) as usize];
-                        for (y, x) in (0..height).cartesian_product(0..width) {
-                            let index_8bpp = (y * width) + x;
-                            let index_1bpp = ((y * width) + x) / 8;
+                        for y in 0..height {
+                            for x in 0..width {
+                                let index_8bpp = (y * width) + x;
+                                let index_1bpp = ((y * width) + x) / 8;
 
-                            // Set bit to 1 in byte if dithering returned a black pixel
-                            if data_8bpp[index_8bpp as usize] > threshold_matrix.look_up(x, y) {
-                                data_1bpp[index_1bpp as usize] =
-                                    data_1bpp[index_1bpp as usize] | base_two.pow(index_8bpp % 8);
-                            };
+                                // Set bit to 1 in byte if dithering returned a black pixel
+                                if data_8bpp[index_8bpp as usize] > threshold_matrix.look_up(x, y) {
+                                    data_1bpp[index_1bpp as usize] =
+                                        data_1bpp[index_1bpp as usize] | 2_u8.pow(index_8bpp % 8);
+                                };
+                            }
                         }
                         frame_tx.send(data_1bpp).unwrap();
                     }

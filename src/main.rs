@@ -105,6 +105,56 @@ async fn main() -> Result<()> {
     assert!(opt.vcom < 0.0 && opt.vcom >= -5.0);
     assert!(opt.ghost > 0);
 
+    // Connect to IT8951 controlled display
+    let mut api = API::connect(opt.width, opt.height)?;
+
+    // Get system information
+    let system_info = api.get_system_info();
+    let image_buffer_base = system_info.image_buffer_base;
+
+    // Calculate byte size of each 1bpp image
+    let image_size = (opt.width * opt.height) / 8;
+
+    println!(
+        r#"
+      VCOM value: {}
+Panel Dimensions: {}x{}
+Video Dimensions: {}x{}
+  Buffer Address: 0x{:x}
+      Image size: {} bytes
+        "#,
+        opt.vcom,
+        system_info.width,
+        system_info.height,
+        opt.width,
+        opt.height,
+        image_buffer_base,
+        image_size
+    );
+
+    // Make sure the target sizes fit on the display
+    assert!(system_info.width >= opt.width);
+    assert!(system_info.height >= opt.height);
+
+    // Set VCOM value
+    api.set_vcom(opt.vcom)?;
+
+    // Remember register value for later
+    let reg = api.get_memory_register_value(0x1800_1138)?;
+
+    // Enable 1bit drawing and image pitch mode
+    // 0000 0000 0000 0110 0000 0000 0000 0000
+    // |         |     ^^  |         |
+    // 113B      113A      1139      1138
+    api.set_memory_register_value(0x1800_1138, reg | (1 << 18) | (1 << 17))
+        .unwrap();
+
+    // Set bitmap mode color definition (0 - set black(0x00), 1 - set white(0xf0))
+    api.set_memory_register_value(0x1800_1250, 0xf0 | (0x00 << 8))?;
+
+    // Set image pitch width
+    api.set_memory_register_value(0x1800_124c, (opt.width / 8) / 4)?;
+
     // Establish communication channels between both threads
     let (shutdown_tx, mut shutdown_rx) = broadcast::channel::<bool>(1);
     let (frame_tx, mut frame_rx) = mpsc::unbounded_channel::<Frame>();
@@ -214,59 +264,6 @@ async fn main() -> Result<()> {
     // Spawn the second thread: It will receive the frames and display them on the e-paper device.
     let mut shutdown_rx_panel = shutdown_tx.subscribe();
     let panel_task = task::spawn_blocking(move || {
-        // Connect to IT8951 controlled display
-        let mut api = API::connect(opt.width, opt.height).unwrap();
-
-        // Get system information
-        let system_info = api.get_system_info();
-        let image_buffer_base = system_info.image_buffer_base;
-
-        // Calculate byte size of each 1bpp image
-        let image_size = (opt.width * opt.height) / 8;
-
-        println!(
-            r#"
-      VCOM value: {}
-Panel Dimensions: {}x{}
-Video Dimensions: {}x{}
-  Buffer Address: 0x{:x}
-      Image size: {} bytes
-        "#,
-            opt.vcom,
-            system_info.width,
-            system_info.height,
-            opt.width,
-            opt.height,
-            image_buffer_base,
-            image_size
-        );
-
-        // Make sure the target sizes fit on the display
-        assert!(system_info.width >= opt.width);
-        assert!(system_info.height >= opt.height);
-
-        // Set VCOM value
-        api.set_vcom(opt.vcom).unwrap();
-
-        // Remember register value for later
-        let reg = api.get_memory_register_value(0x1800_1138).unwrap();
-
-        // Enable 1bit drawing and image pitch mode
-        // 0000 0000 0000 0110 0000 0000 0000 0000
-        // |         |     ^^  |         |
-        // 113B      113A      1139      1138
-        api.set_memory_register_value(0x1800_1138, reg | (1 << 18) | (1 << 17))
-            .unwrap();
-
-        // Set bitmap mode color definition (0 - set black(0x00), 1 - set white(0xf0))
-        api.set_memory_register_value(0x1800_1250, 0xf0 | (0x00 << 8))
-            .unwrap();
-
-        // Set image pitch width
-        api.set_memory_register_value(0x1800_124c, (opt.width / 8) / 4)
-            .unwrap();
-
-        // Write images to buffer
         let mut frame_counter = 0;
         loop {
             if let Ok(true) = shutdown_rx_panel.try_recv() {

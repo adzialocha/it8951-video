@@ -2,6 +2,8 @@ mod api;
 mod usb;
 
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 use anyhow::Result;
 use ffmpeg_next::format::{input, Pixel};
@@ -158,10 +160,12 @@ Video Dimensions: {}x{}
     // Establish communication channels between both threads
     let (shutdown_tx, mut shutdown_rx) = broadcast::channel::<bool>(1);
     let (frame_tx, mut frame_rx) = mpsc::unbounded_channel::<Frame>();
+    let video_finished = Arc::new(AtomicBool::new(false));
+    let video_finished_tx = video_finished.clone();
 
     // Spawn the first thread: It will decode the video, convert every frame into the right format
     // and send it over to the display thread.
-    task::spawn_blocking(move || {
+    let video_task = task::spawn_blocking(move || {
         // Open video stream from file
         let mut context_video = input(&opt.input).expect("Failed opening video file");
 
@@ -258,6 +262,16 @@ Video Dimensions: {}x{}
 
         if !cancelled {
             receive_and_process_decoded_frames(&mut decoder).unwrap();
+
+            video_finished_tx.store(true, Ordering::SeqCst);
+
+            // .. keep thread running even when it is done! This allows us to select the join handle
+            // with tokio in case this thread panics and exists
+            loop {
+                if let Ok(true) = shutdown_rx.try_recv() {
+                    break;
+                }
+            }
         }
     });
 
@@ -267,7 +281,6 @@ Video Dimensions: {}x{}
         let mut frame_counter = 0;
         loop {
             if let Ok(true) = shutdown_rx_panel.try_recv() {
-                // Clean up afterwards, by setting screen to white
                 api.clear_display().unwrap();
                 break;
             }
@@ -286,18 +299,26 @@ Video Dimensions: {}x{}
                 }
 
                 frame_counter += 1;
+            } else if video_finished.load(Ordering::SeqCst) {
+                // Finish when video is done AND buffer is empty
+                api.clear_display().unwrap();
+                break;
             }
         }
     });
 
     // Run this until [CTRL] + [C] got pressed or something went wrong
     tokio::select! {
+        _ = video_task => (),
         _ = panel_task => (),
-        _ = tokio::signal::ctrl_c() => (),
+        _ = tokio::signal::ctrl_c() => {
+            println!("\nExit program ..");
+        },
     }
 
-    println!("\nExit program ..");
-    shutdown_tx.send(true).unwrap();
+    if let Err(_) = shutdown_tx.send(true) {
+        // Ignore error
+    }
 
     Ok(())
 }

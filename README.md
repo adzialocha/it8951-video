@@ -36,55 +36,25 @@ udevadm control --reload-rules && udevadm trigger
 
 ## Usage
 
-**1. Convert video to raw data format**
-
-```
-Convert videos to raw frames to prepare them being displayed on e-paper screen
-
-USAGE:
-    it8951-video-convert [OPTIONS] <video> <output>
-
-FLAGS:
-        --help       Prints help information
-    -V, --version    Prints version information
-
-OPTIONS:
-    -h, --height <height>    Output video height [default: 1392]
-    -w, --width <width>      Output video width [default: 1856]
-
-ARGS:
-    <video>     Input video file
-    <output>    Output raw data file
-```
-
-**2. Play raw video on e-paper display**
-
 ```
 Play videos on IT8951-controlled e-paper displays
 
 USAGE:
-    it8951-video-display [OPTIONS] <input>
+    it8951-video [OPTIONS] <input>
 
 FLAGS:
         --help       Prints help information
     -V, --version    Prints version information
 
 OPTIONS:
-    -g, --ghost <ghost>      Paint in GL16 mode every nth frame [default: 32]
-    -t, --take <take>        Render every nth frame from video data [default: 5]
     -v, --vcom <vcom>        VCOM value [default: -1.58]
-    -w, --width <width>      Input video width [default: 1856]
-    -h, --height <height>    Input video height [default: 1392]
+    -g, --ghost <ghost>      Paint in GL16 mode every nth frame [default: 32]
+    -t, --take <take>        Only take every nth frame from video [default: 5]
+    -w, --width <width>      Width of video on display [default: 1856]
+    -h, --height <height>    Height of video on display [default: 1392]
 
 ARGS:
-    <input>    Input raw data file
-```
-
-## Development
-
-```
-cargo run --bin it8951-video-convert test.mp4 test.raw
-cargo run --bin it8951-video-display test.raw
+    <input>    Video file which will be displayed
 ```
 
 ## Credits

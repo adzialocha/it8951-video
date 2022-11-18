@@ -68,26 +68,6 @@ const DPY_AREA_CMD: [u8; 16] = [
     0x00,
 ];
 
-/// Command to reset controller to initial state.
-const SOFTWARE_RESET_CMD: [u8; 16] = [
-    CUSTOMER_CMD,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0xa7, // Software reset command
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-];
-
 /// Display modes.
 #[repr(u32)]
 #[derive(Serialize, PartialEq, Debug)]
@@ -387,12 +367,6 @@ impl API {
         ];
 
         self.connection.write_command_raw(&data, &[])
-    }
-
-    /// Reset device state to default.
-    pub fn reset(&mut self) -> rusb::Result<SystemInfo> {
-        self.connection
-            .read_command(&SOFTWARE_RESET_CMD, bincode::options().with_big_endian())
     }
 
     /// Write any data to memory using fast-write mode.

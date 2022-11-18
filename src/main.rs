@@ -163,13 +163,13 @@ Video Dimensions: {}x{}
     // and send it over to the display thread.
     task::spawn_blocking(move || {
         // Open video stream from file
-        let mut context_video = input(&opt.input).unwrap();
+        let mut context_video = input(&opt.input).expect("Failed opening video file");
 
         let input = context_video
             .streams()
             .best(Type::Video)
             .ok_or(ffmpeg_next::Error::StreamNotFound)
-            .unwrap();
+            .expect("Could not find video stream in file");
         let video_stream_index = input.index();
 
         // Prepare video decoder which should rescale frames to target size and make them grayscale

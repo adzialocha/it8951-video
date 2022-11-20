@@ -59,5 +59,5 @@ ARGS:
 
 ## Credits
 
-* Bastian for finding almost every hack which made this work at all
+* [@bspth](https://github.com/bspth) for finding almost every hack which made this work at all
 * https://github.com/faassen/rust-it8951 for the SCSI over USB communication with IT8951

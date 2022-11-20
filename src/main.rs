@@ -149,14 +149,13 @@ Video Dimensions: {}x{}
     // 0000 0000 0000 0110 0000 0000 0000 0000
     // |         |     ^^  |         |
     // 113B      113A      1139      1138
-    api.set_memory_register_value(0x1800_1138, reg | (1 << 18) | (1 << 17))
-        .unwrap();
+    api.set_memory_register_value(0x1800_1138, reg | 1 << 18 | 1 << 17)?;
 
     // Set bitmap mode color definition (0 - set black(0x00), 1 - set white(0xf0))
-    api.set_memory_register_value(0x1800_1250, 0xf0 | (0x00 << 8))?;
+    api.set_memory_register_value(0x1800_1250, 0xf0 | 0x00 << 8)?;
 
     // Set image pitch width
-    api.set_memory_register_value(0x1800_124c, (opt.width / 8) / 4)?;
+    api.set_memory_register_value(0x1800_124c, opt.width / 8 / 4)?;
 
     // Establish communication channels between both threads
     let (shutdown_tx, mut shutdown_rx) = broadcast::channel::<bool>(1);
